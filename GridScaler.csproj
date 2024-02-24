@@ -4,7 +4,7 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>GridScaler</AssemblyName>
     <Description>GridScaler</Description>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
