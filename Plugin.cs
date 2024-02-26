@@ -37,7 +37,7 @@ namespace GridScaler
         public int GetIndex() { return index; }
         public int GetTwin() { return twin; }
         public int GetAxis() { return axis; }
-        public Vector3 GetAxisDirection(){ return axisDirection; }
+        public Vector3 GetAxisDirection() { return axisDirection; }
     }
 
     public class ScalerTool : MonoBehaviour
@@ -45,13 +45,15 @@ namespace GridScaler
         private bool init = false;
         private bool active = false;
 
+        private int layerIndex = 0;
+
         //Center pivot transform.
         private Transform pivot;
         //Scaling anchors.
         private ScalerToolAnchor[] anchors;
         //Is the scaler visible in the scene?
         private bool visible = false;
-        
+
         //Scale increment.
         private float step = 1f;
         //Current dimensions of the scaling tool in world space.
@@ -194,7 +196,7 @@ namespace GridScaler
 
         public int GetScaledAxis()
         {
-            if(IsScaling())
+            if (IsScaling())
             {
                 return selectedAnchor.GetAxis();
             }
@@ -249,11 +251,21 @@ namespace GridScaler
         #endregion
 
         #region Set
+        public void SetLayer(int layerIndex)
+        {
+            this.layerIndex = layerIndex;
+            gameObject.layer = layerIndex;
+            foreach(ScalerToolAnchor anchor in anchors)
+            {
+                anchor.gameObject.layer = layerIndex;
+            }
+
+        }
         public void SetStep(float value, float zeroValue = 0.001f)
         {
-            if(value <= 0)
+            if (value <= 0)
             {
-                if(zeroValue <= 0)
+                if (zeroValue <= 0)
                 {
                     step = 0.001f;
                 }
@@ -316,7 +328,7 @@ namespace GridScaler
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             RaycastHit hit;
 
-            if (Physics.Raycast(ray, out hit))
+            if (Physics.Raycast(ray, out hit, 999999f, 1 << layerIndex))
             {
                 ScalerToolAnchor anchor = hit.collider.gameObject.GetComponent<ScalerToolAnchor>();
                 if (anchor != null)
@@ -380,7 +392,7 @@ namespace GridScaler
 
                         //Clmap the distance to the nearest multiple of the set step and ensure its never 0.
                         float clampedDistance = Mathf.Round(actualDistance / step) * step;
-                        clampedDistance = Mathf.Max(clampedDistance, step);                        
+                        clampedDistance = Mathf.Max(clampedDistance, step);
 
                         //Calculate the new position for the anchor based on the clamped distance.
                         Vector3 newPosition = twinPos + dirTwinToAnchor * clampedDistance;
@@ -408,7 +420,7 @@ namespace GridScaler
 
                     if (preDragAnchorPosition != selectedAnchor.transform.position)
                     {
-                        Vector3 prevDimension = dimensions;                       
+                        Vector3 prevDimension = dimensions;
 
                         switch (selectedAnchor.GetAxis())
                         {
@@ -431,7 +443,7 @@ namespace GridScaler
                         OnScalerChange(prevDimension, pivot.TransformDirection(selectedAnchor.GetAxisDirection()).normalized, selectedAnchor.GetAxis());
                     }
                 }
-                else if(target.transform.position != previousTargetPosition || target.transform.rotation != previousTargetRotation)
+                else if (target.transform.position != previousTargetPosition || target.transform.rotation != previousTargetRotation)
                 {
                     previousTargetRotation = target.transform.rotation;
                     previousTargetPosition = target.transform.position;
@@ -463,7 +475,7 @@ namespace GridScaler
                 i++;
             }
         }
-       
+
         //Calculate the plane used for raycasting the new anchor position.
         private Plane AxisPlane(Vector3 cameraPosition, int axis, Vector3 offset)
         {
@@ -489,10 +501,10 @@ namespace GridScaler
 
             return new Plane(normal, position);
         }
-        
+
         //Get the position of an object as a percentage (0-1) inside the tools bounding box.
         private Vector3 GetPercentagePosition(Vector3 worldPosition)
-        {           
+        {
             Vector3 localPosition = pivot.InverseTransformPoint(worldPosition);
             Vector3 min = dimensions * -0.5f;
             Vector3 percentage = new Vector3((localPosition.x - min.x) / dimensions.x, (localPosition.y - min.y) / dimensions.y, (localPosition.z - min.z) / dimensions.z);
@@ -552,7 +564,7 @@ namespace GridScaler
     {
         public const string pluginGUID = "com.metalted.zeepkist.gridscaler";
         public const string pluginName = "Grid Scaler";
-        public const string pluginVersion = "0.4";
+        public const string pluginVersion = "0.5";
         public static Plugin plg;
 
         public ConfigEntry<KeyCode> activateScaler;
@@ -563,10 +575,12 @@ namespace GridScaler
         public ConfigEntry<int> tooltipFontSize;
         public ConfigEntry<bool> showAllAxis;
         public ConfigEntry<float> zeroValue;
+        public ConfigEntry<bool> translationGUI;
+        public ConfigEntry<bool> rotationGUI;
 
         private ScalerTool scalerTool;
         public LEV_LevelEditorCentral central;
-        
+
         private List<string> undoBefore;
         private Texture2D blackTex;
 
@@ -580,6 +594,8 @@ namespace GridScaler
             tooltipFontSize = Config.Bind("Settings", "Tooltip Text Size", 16, "");
             showAllAxis = Config.Bind("Settings", "Show All Axis", false, "");
             zeroValue = Config.Bind("Settings", "Zero Value", 0.001f, "");
+            translationGUI = Config.Bind("Settings", "Show Translation GUI", false, "");
+            rotationGUI = Config.Bind("Settings", "Show Rotation GUI", false, "");
 
             Harmony harmony = new Harmony(pluginGUID);
             harmony.PatchAll();
@@ -599,9 +615,17 @@ namespace GridScaler
             scalerTool.Initialize();
         }
 
+        public void SetAnchorLayer(int layerIndex)
+        {
+            if(scalerTool != null)
+            {
+                scalerTool.SetLayer(layerIndex);
+            }
+        }
+
         public void OnSelectionChange()
         {
-            if(central != null)
+            if (central != null)
             {
                 if (scalerTool.IsActive())
                 {
@@ -614,7 +638,7 @@ namespace GridScaler
 
                         scalerTool.Detach();
                     }
-                    
+
                     if (central.selection.list.Count == 0)
                     {
                         scalerTool.Detach();
@@ -630,15 +654,15 @@ namespace GridScaler
 
         private KeyCode GetMouseButton(int i)
         {
-            if(i <= 3)
+            if (i <= 3)
             {
                 return KeyCode.Mouse3;
             }
-            else if(i == 4)
+            else if (i == 4)
             {
                 return KeyCode.Mouse4;
             }
-            else if(i == 5)
+            else if (i == 5)
             {
                 return KeyCode.Mouse5;
             }
@@ -696,12 +720,12 @@ namespace GridScaler
                 }
             }
 
-            if(scalerTool.IsActive())
+            if (scalerTool.IsActive())
             {
-                if(central == null)
+                if (central == null)
                 {
                     scalerTool.Detach();
-                    scalerTool.Deactivate();
+                    //scalerTool.Deactivate();
                 }
             }
         }
@@ -713,7 +737,7 @@ namespace GridScaler
             central.validation.BreakLock(central.undoRedo.ConvertBeforeAndAfterListToCollection(undoBefore, after, scalerTool.GetSelection(), selectionList, selectionList), "Gizmo1");
         }
 
-        private string[] axisNames = new string[] { "X: ", "Y: ", "Z: "};
+        private string[] axisNames = new string[] { "X: ", "Y: ", "Z: " };
         private Color lightRed = new Color(1f, 0.4f, 0.4f);
         private Color lightGreen = new Color(0.4f, 1f, 0.4f);
         private Color lightBlue = new Color(0.4f, 0.4f, 1f);
@@ -727,7 +751,6 @@ namespace GridScaler
                 style.fontSize = (int)tooltipFontSize.BoxedValue;
                 style.normal.background = blackTex;
                 style.alignment = TextAnchor.MiddleLeft;
-                int decimals = CountDecimalPlaces(scalerTool.GetStep());
                 int scaledAxis = scalerTool.GetScaledAxis();
 
                 if ((bool)showAllAxis.BoxedValue)
@@ -743,6 +766,49 @@ namespace GridScaler
                 {
                     style.normal.textColor = scaledAxis == 0 ? lightRed : (scaledAxis == 1 ? lightGreen : lightBlue);
                     GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30), size), (scaledAxis == -1 ? "?: " : axisNames[scaledAxis]) + scalerTool.GetDimensions()[scaledAxis], style);
+                }
+            }
+
+            if(central != null)
+            {
+                if(central.gizmos.isDragging)
+                {
+                    if (central.gizmos.dragButton.isSelected)
+                    {
+                        if ((bool)translationGUI.BoxedValue)
+                        {
+                            Vector2 size = new Vector2((int)tooltipWidth.BoxedValue, (int)tooltipHeight.BoxedValue);
+                            GUIStyle style = new GUIStyle(GUI.skin.box);
+                            style.fontSize = (int)tooltipFontSize.BoxedValue;
+                            style.normal.background = blackTex;
+                            style.alignment = TextAnchor.MiddleLeft;
+
+                            style.normal.textColor = lightRed;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30 - (2 * size.y)), size), "X: " + RoundToDecimalPlacesStringGizmo(central.gizmos.translationGizmos.transform.position.x, 5), style);
+                            style.normal.textColor = lightGreen;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30 - size.y), size), "Y: " + RoundToDecimalPlacesStringGizmo(central.gizmos.translationGizmos.transform.position.y, 5), style);
+                            style.normal.textColor = lightBlue;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30), size), "Z: " + RoundToDecimalPlacesStringGizmo(central.gizmos.translationGizmos.transform.position.z, 5), style);
+                        }
+                    }
+                    else if(central.gizmos.rotateButton.isSelected)
+                    {
+                        if ((bool)rotationGUI.BoxedValue)
+                        {
+                            Vector2 size = new Vector2((int)tooltipWidth.BoxedValue, (int)tooltipHeight.BoxedValue);
+                            GUIStyle style = new GUIStyle(GUI.skin.box);
+                            style.fontSize = (int)tooltipFontSize.BoxedValue;
+                            style.normal.background = blackTex;
+                            style.alignment = TextAnchor.MiddleLeft;
+
+                            style.normal.textColor = lightRed;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30 - (2 * size.y)), size), "X: " + RoundToDecimalPlacesStringGizmo(central.gizmos.rotationGizmos.transform.eulerAngles.x, 5), style);
+                            style.normal.textColor = lightGreen;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30 - size.y), size), "Y: " + RoundToDecimalPlacesStringGizmo(central.gizmos.rotationGizmos.transform.eulerAngles.y, 5), style);
+                            style.normal.textColor = lightBlue;
+                            GUI.Box(new Rect(new Vector2(Input.mousePosition.x + 30, Screen.height - Input.mousePosition.y - 30), size), "Z: " + RoundToDecimalPlacesStringGizmo(central.gizmos.rotationGizmos.transform.eulerAngles.z, 5), style);
+                        }
+                    }
                 }
             }
         }
@@ -790,6 +856,32 @@ namespace GridScaler
 
             return formattedValue;
         }
+
+        public static string RoundToDecimalPlacesStringGizmo(float value, int decimalPlaces)
+        {
+            // Use MidpointRounding.AwayFromZero for consistency in rounding midpoint values
+            double rounded = Math.Round(value, decimalPlaces, MidpointRounding.AwayFromZero);
+
+            // Check for floating-point errors using Mathf.Approximately
+            if (Mathf.Approximately((float)rounded, value))
+            {
+                value = (float)rounded; // Assign the original value to avoid trailing zeros
+            }
+
+            // Convert the rounded value to a string with the desired format
+            string formattedValue = value.ToString($"F{decimalPlaces}", CultureInfo.InvariantCulture);
+
+            // Remove trailing zeros
+            formattedValue = formattedValue.TrimEnd('0');
+
+            // Remove decimal point if all digits after it are zeros
+            if (formattedValue.EndsWith("."))
+            {
+                formattedValue = formattedValue.Substring(0, formattedValue.Length - 1);
+            }
+
+            return formattedValue;
+        }
     }
 
     [HarmonyPatch(typeof(LEV_LevelEditorCentral), "Awake")]
@@ -798,6 +890,8 @@ namespace GridScaler
         public static void Postfix(LEV_LevelEditorCentral __instance)
         {
             Plugin.plg.central = __instance;
+            int layerIndex = Mathf.RoundToInt(Mathf.Log(__instance.click.gizmoLayer, 2));
+            Plugin.plg.SetAnchorLayer(layerIndex);
         }
     }
 
@@ -851,6 +945,15 @@ namespace GridScaler
             Plugin.plg.OnSelectionChange();
         }
 
+        public static void Postfix()
+        {
+            Plugin.plg.OnSelectionChange();
+        }
+    }
+
+    [HarmonyPatch(typeof(LEV_UndoRedo), "Reselect")]
+    public class UndoRedoReselectPostfix
+    {
         public static void Postfix()
         {
             Plugin.plg.OnSelectionChange();
