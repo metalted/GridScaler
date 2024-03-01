@@ -367,6 +367,13 @@ namespace GridScaler
         {
             if (IsVisible())
             {
+                if(target == null)
+                {
+                    Debug.LogError("Grid Scaling Target Destroyed! Reverting...");
+                    Plugin.plg.central.selection.DeselectAllBlocks(false, " Gizmo1");
+                    return;
+                }
+
                 if (IsScaling())
                 {
                     Vector3 preDragAnchorPosition = selectedAnchor.transform.position;
@@ -564,7 +571,7 @@ namespace GridScaler
     {
         public const string pluginGUID = "com.metalted.zeepkist.gridscaler";
         public const string pluginName = "Grid Scaler";
-        public const string pluginVersion = "0.5";
+        public const string pluginVersion = "0.6";
         public static Plugin plg;
 
         public ConfigEntry<KeyCode> activateScaler;
