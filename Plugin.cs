@@ -571,7 +571,7 @@ namespace GridScaler
     {
         public const string pluginGUID = "com.metalted.zeepkist.gridscaler";
         public const string pluginName = "Grid Scaler";
-        public const string pluginVersion = "0.6";
+        public const string pluginVersion = "0.7";
         public static Plugin plg;
 
         public ConfigEntry<KeyCode> activateScaler;
@@ -960,6 +960,15 @@ namespace GridScaler
 
     [HarmonyPatch(typeof(LEV_UndoRedo), "Reselect")]
     public class UndoRedoReselectPostfix
+    {
+        public static void Postfix()
+        {
+            Plugin.plg.OnSelectionChange();
+        }
+    }
+
+    [HarmonyPatch(typeof(LEV_GizmoHandler), "GoOutOfGMode")]
+    public class GizmoGoOutOfGMode
     {
         public static void Postfix()
         {
