@@ -10,7 +10,7 @@ namespace GridScaler
 {
     public class ScalerToolAnchor : MonoBehaviour
     {
-        private Color[] axisColors = new Color[] { Color.red, Color.green, Color.blue };
+        private Color[] axisColors = new Color[] { Color.red, Color.red, Color.green, Color.green, Color.blue, Color.blue };
         private Vector3[] axisDirections = new Vector3[] { Vector3.right, Vector3.left, Vector3.up, Vector3.down, Vector3.forward, Vector3.back };
         private int index;
         private int twin;
@@ -30,7 +30,7 @@ namespace GridScaler
 
             axisDirection = axisDirections[index];
 
-            GetComponent<MeshRenderer>().material.color = axisColors[axis];
+            GetComponent<MeshRenderer>().material.color = axisColors[index];
             this.gameObject.SetActive(false);
         }
 
@@ -63,6 +63,7 @@ namespace GridScaler
         //The length of the currently scaled axis.
         private float anchorValue;
         private string[] stringDimensions = new string[3] { "1", "1", "1" };
+        private string[] anchorNames = new string[6] { "GS_Anchor_X_Pos", "GS_Anchor_X_Neg", "GS_Anchor_Y_Pos", "GS_Anchor_Y_Neg", "GS_Anchor_Z_Pos", "GS_Anchor_Z_Neg" };
 
         //The target of scaling, the last block in the selection list.
         private List<BlockProperties> selection;
@@ -99,6 +100,7 @@ namespace GridScaler
                 anchors[i] = GameObject.CreatePrimitive(PrimitiveType.Sphere).AddComponent<ScalerToolAnchor>();
                 anchors[i].transform.parent = this.gameObject.transform;
                 anchors[i].Initialize(i);
+                anchors[i].gameObject.name = anchorNames[i];
             }
 
             Place(Vector3.zero, Quaternion.identity, Vector3.one);
@@ -173,6 +175,8 @@ namespace GridScaler
             stringDimensions[0] = Plugin.RoundToDecimalPlacesString(dimensions.x, 3);
             stringDimensions[1] = Plugin.RoundToDecimalPlacesString(dimensions.y, 3);
             stringDimensions[2] = Plugin.RoundToDecimalPlacesString(dimensions.z, 3);
+
+            //size = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z));
 
             anchors[0].transform.position = pivot.TransformPoint(Vector3.right * size.x / 2f);
             anchors[1].transform.position = pivot.TransformPoint(-Vector3.right * size.x / 2f);
@@ -282,37 +286,64 @@ namespace GridScaler
 
         public void SetSelection(List<BlockProperties> selection)
         {
+            //Save the selection list.
             this.selection = selection;
+            //The target of the selection is the last object in the list.
             target = selection[selection.Count - 1];
+            //Save a copy of the current position and rotation of the target object.
             previousTargetPosition = target.transform.position;
             previousTargetRotation = target.transform.rotation;
 
-            //Bounding box min and max positions.
+            //Bounding box min and max positions initializations.
             Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
             Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
 
             //Go over each object in the selection
             foreach (BlockProperties bp in selection)
             {
-                //Get the extents from the size of the block.
+                //First, calculate the local position of the center by adding the bounding box offset.
+                Vector3 centerLocal = bp.boundingBoxOffset;
+
+                //Calculate the extents (half-sizes) of the box
                 Vector3 extents = bp.boundingBoxSize * 0.5f;
+
+                //List to hold all the corner positions in local space
+                Vector3[] localCorners = new Vector3[8];
+                //List to hold all the corner positions in world space
+                Vector3[] worldCorners = new Vector3[8];
+
                 for (int i = 0; i < 8; i++)
                 {
-                    Vector3 corner = bp.transform.TransformPoint(Vector3.Scale(CornerVectors[i], extents) + bp.boundingBoxOffset);
-                    Vector3 localCorner = target.transform.InverseTransformPoint(corner);
-                    min.x = Mathf.Min(localCorner.x, min.x);
-                    min.y = Mathf.Min(localCorner.y, min.y);
-                    min.z = Mathf.Min(localCorner.z, min.z);
-                    max.x = Mathf.Max(localCorner.x, max.x);
-                    max.y = Mathf.Max(localCorner.y, max.y);
-                    max.z = Mathf.Max(localCorner.z, max.z);
+                    Vector3 cv = CornerVectors[i];
+                    localCorners[i] = centerLocal + new Vector3(cv.x * extents.x, cv.y * extents.y, cv.z * extents.z);
+                    worldCorners[i] = bp.transform.TransformPoint(localCorners[i]);
+
+                    // Transform the world point into the local space of the target.
+                    Vector3 targetLocalCorner = target.transform.InverseTransformPoint(worldCorners[i]);
+
+                    min.x = Mathf.Min(targetLocalCorner.x, min.x);
+                    min.y = Mathf.Min(targetLocalCorner.y, min.y);
+                    min.z = Mathf.Min(targetLocalCorner.z, min.z);
+                    max.x = Mathf.Max(targetLocalCorner.x, max.x);
+                    max.y = Mathf.Max(targetLocalCorner.y, max.y);
+                    max.z = Mathf.Max(targetLocalCorner.z, max.z);
                 }
             }
 
-            Vector3 center = target.transform.TransformPoint((max + min) / 2);
-            Vector3 size = Vector3.Scale(target.transform.localScale, (max - min));
+            //transform it back to world so we can calculate the bounding box based on the target.
+            Vector3 localCenter = (min + max) / 2;
+            Vector3 localSize = (max - min);
 
-            Place(center, target.transform.rotation, size);
+            // Transform the local center back to world space
+            Vector3 worldCenter = target.transform.TransformPoint(localCenter);
+
+            // Calculate the bounding box size in world space using the target's scale
+            Vector3 worldSize = Vector3.Scale(localSize, target.transform.lossyScale);
+            worldSize.x = Mathf.Abs(worldSize.x);
+            worldSize.y = Mathf.Abs(worldSize.y);
+            worldSize.z = Mathf.Abs(worldSize.z);
+
+            Place(worldCenter, target.transform.rotation, worldSize);
 
             localSelectionPositions.Clear();
             foreach (BlockProperties bp in selection)
@@ -370,6 +401,9 @@ namespace GridScaler
                 if(target == null)
                 {
                     Debug.LogError("Grid Scaling Target Destroyed! Reverting...");
+
+                    Plugin.plg.targetDestroyedFlag = true;
+
                     Plugin.plg.central.selection.DeselectAllBlocks(false, " Gizmo1");
                     return;
                 }
@@ -404,7 +438,10 @@ namespace GridScaler
                         //Calculate the new position for the anchor based on the clamped distance.
                         Vector3 newPosition = twinPos + dirTwinToAnchor * clampedDistance;
 
-                        selectedAnchor.transform.position = newPosition;
+                        if (IsPositionChangeSignificant(newPosition, selectedAnchor.transform.position, 0.001f))
+                        {
+                            selectedAnchor.transform.position = newPosition;
+                        }
                     }
 
                     int decimals = Plugin.CountDecimalPlaces(step);
@@ -465,10 +502,29 @@ namespace GridScaler
             }
         }
 
+        public bool IsPositionChangeSignificant(Vector3 newPosition, Vector3 currentPosition, float faultMargin)
+        {
+            // Calculate the differences in each component
+            float differenceX = Mathf.Abs(newPosition.x - currentPosition.x);
+            float differenceY = Mathf.Abs(newPosition.y - currentPosition.y);
+            float differenceZ = Mathf.Abs(newPosition.z - currentPosition.z);
+
+            // Check if all differences are less than the fault margin
+            if (differenceX < faultMargin && differenceY < faultMargin && differenceZ < faultMargin)
+            {
+                // If all differences are within the fault margin, return false
+                return false;
+            }
+
+            // If any component difference is greater than or equal to the margin, return true
+            return true;
+        }
+
         private void OnScalerChange(Vector3 prevDimension, Vector3 scaledDirection, int axis)
         {
             Vector3 dimensions = GetDimensions();
-            Vector3 dimensionDelta = new Vector3(dimensions.x / prevDimension.x, dimensions.y / prevDimension.y, dimensions.z / prevDimension.z);
+            Vector3 dimensionDelta = new Vector3(Mathf.Abs(dimensions.x / prevDimension.x), Mathf.Abs(dimensions.y / prevDimension.y), Mathf.Abs(dimensions.z / prevDimension.z));
+            //Vector3 dimensionDelta = new Vector3(dimensions.x / prevDimension.x, dimensions.y / prevDimension.y, dimensions.z / prevDimension.z);
 
             int i = 0;
             foreach (BlockProperties bp in selection)
@@ -476,6 +532,7 @@ namespace GridScaler
                 Vector3 toScale = Vector3.one;
                 int closestAxis = ClosestAxis(bp.transform, scaledDirection);
                 toScale[closestAxis] = dimensionDelta[axis];
+
                 bp.transform.localScale = Vector3.Scale(bp.transform.localScale, toScale);
                 bp.transform.position = PercentageToWorldPosition(localSelectionPositions[i]);
                 bp.SomethingChanged();
@@ -571,7 +628,7 @@ namespace GridScaler
     {
         public const string pluginGUID = "com.metalted.zeepkist.gridscaler";
         public const string pluginName = "Grid Scaler";
-        public const string pluginVersion = "0.7";
+        public const string pluginVersion = "1.2";
         public static Plugin plg;
 
         public ConfigEntry<KeyCode> activateScaler;
@@ -590,6 +647,8 @@ namespace GridScaler
 
         private List<string> undoBefore;
         private Texture2D blackTex;
+
+        public bool targetDestroyedFlag = false;
 
         private void Awake()
         {
@@ -646,8 +705,9 @@ namespace GridScaler
                         scalerTool.Detach();
                     }
 
-                    if (central.selection.list.Count == 0)
+                    if (central.selection.list.Count == 0 || targetDestroyedFlag)
                     {
+                        targetDestroyedFlag = false;
                         scalerTool.Detach();
                     }
                     else
@@ -961,6 +1021,20 @@ namespace GridScaler
     [HarmonyPatch(typeof(LEV_UndoRedo), "Reselect")]
     public class UndoRedoReselectPostfix
     {
+        public static void Postfix()
+        {
+            Plugin.plg.OnSelectionChange();
+        }
+    }
+
+    [HarmonyPatch(typeof(LEV_GizmoHandler), "DeleteSelectedObjects")]
+    public class GizmoDeleteSelected
+    {
+        public static void Prefix()
+        {
+            Plugin.plg.OnSelectionChange();
+        }
+
         public static void Postfix()
         {
             Plugin.plg.OnSelectionChange();
