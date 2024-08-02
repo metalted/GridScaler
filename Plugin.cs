@@ -364,6 +364,23 @@ namespace GridScaler
                 ScalerToolAnchor anchor = hit.collider.gameObject.GetComponent<ScalerToolAnchor>();
                 if (anchor != null)
                 {
+                    //Check the selection for 0 scales
+                    bool hasZero = false;
+                    foreach(BlockProperties bp in Plugin.plg.central.selection.list)
+                    {
+                        if (bp.transform.localScale.x == 0 || bp.transform.localScale.y == 0 || bp.transform.localScale.z == 0)
+                        {
+                            hasZero = true;
+                            break;
+                        }
+                    }
+
+                    if(hasZero)
+                    {
+                        PlayerManager.Instance.messenger.Log("Grid Scaler doesn't support 0 scale.", 2f);
+                        return false;
+                    }
+
                     selectedAnchor = anchor;
                     return true;
                 }
@@ -628,7 +645,7 @@ namespace GridScaler
     {
         public const string pluginGUID = "com.metalted.zeepkist.gridscaler";
         public const string pluginName = "Grid Scaler";
-        public const string pluginVersion = "1.2";
+        public const string pluginVersion = "1.3";
         public static Plugin plg;
 
         public ConfigEntry<KeyCode> activateScaler;
